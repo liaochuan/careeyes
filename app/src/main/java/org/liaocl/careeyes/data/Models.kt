@@ -43,8 +43,9 @@ data class AppSettings(
     val running: Boolean = true,
     val selectedPresetId: String = DEFAULT_PRESETS.first().id,
     val presets: List<Preset> = DEFAULT_PRESETS,
-    val showProgressNotification: Boolean = true,
-    val hideFromRecents: Boolean = true,
+    val showProgressNotification: Boolean = false,
+    val showNotificationActions: Boolean = false,
+    val hideFromRecents: Boolean = false,
     val pauseVideoDuringBreak: Boolean = false,
     val autoStartOnBoot: Boolean = true,
     val themeId: String = "jade",
@@ -52,7 +53,8 @@ data class AppSettings(
     val darkMode: String = "system",
     val pausedRemainingMs: Long = 0L,
     val pausedMode: String = "FOCUS",
-    val notificationPermissionAsked: Boolean = false,
+    val onboardingCompleted: Boolean = false,
+    val dismissedPermissionKeys: Set<String> = emptySet(),
 ) {
     fun normalized(): AppSettings {
         val safePresets = presets.filter { it.validationError() == null }
@@ -71,9 +73,14 @@ data class DailyStats(
     val focusSeconds: Long = 0L,
     val breaksCompleted: Int = 0,
     val breaksSkipped: Int = 0,
+    /**
+     * Legacy: screen-off periods were once counted here. Kept so previously stored stats still
+     * decode, but the value is never displayed, incremented, or counted as rest.
+     */
     val naturalBreaks: Int = 0,
 ) {
-    val restCount: Int get() = breaksCompleted + naturalBreaks
+    /** Only explicit breaks count as rest; a screen-off reset is not a rest. */
+    val restCount: Int get() = breaksCompleted
 }
 
 @Serializable
@@ -97,13 +104,12 @@ data class StatsData(
 
     fun recordBreak(
         completed: Boolean,
-        natural: Boolean = false,
         date: LocalDate = LocalDate.now(),
     ): StatsData = updatedDay(date.toString()) { day ->
-        when {
-            natural -> day.copy(naturalBreaks = day.naturalBreaks + 1)
-            completed -> day.copy(breaksCompleted = day.breaksCompleted + 1)
-            else -> day.copy(breaksSkipped = day.breaksSkipped + 1)
+        if (completed) {
+            day.copy(breaksCompleted = day.breaksCompleted + 1)
+        } else {
+            day.copy(breaksSkipped = day.breaksSkipped + 1)
         }
     }
 
@@ -129,8 +135,6 @@ data class StatsData(
     fun totalFocusSeconds(): Long = days.sumOf { it.focusSeconds }
 
     fun totalCompletedBreaks(): Int = days.sumOf { it.breaksCompleted }
-
-    fun totalNaturalBreaks(): Int = days.sumOf { it.naturalBreaks }
 
     fun totalRestCount(): Int = days.sumOf { it.restCount }
 }

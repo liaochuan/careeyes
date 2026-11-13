@@ -24,10 +24,10 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,8 +40,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import org.liaocl.careeyes.BuildConfig
 import org.liaocl.careeyes.R
 import org.liaocl.careeyes.data.AppSettings
@@ -53,26 +51,27 @@ import org.liaocl.careeyes.ui.components.SwitchRow
 import org.liaocl.careeyes.ui.theme.BUILT_IN_PALETTES
 import org.liaocl.careeyes.ui.theme.ColorPickerDialog
 import org.liaocl.careeyes.ui.theme.paletteSeed
+import org.liaocl.careeyes.util.PermissionSnapshot
 import org.liaocl.careeyes.util.PermissionUtils
 
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
+    permissionSnapshot: PermissionSnapshot,
     onBack: () -> Unit,
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
     onRequestNotifications: () -> Unit,
+    onOpenPermissionGuide: () -> Unit,
 ) {
     val context = LocalContext.current
-    var permissionVersion by remember { mutableIntStateOf(0) }
     var showColorPicker by remember { mutableStateOf(false) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { permissionVersion += 1 }
 
-    val notificationGranted = remember(permissionVersion) { PermissionUtils.hasNotificationPermission(context) }
-    val overlayGranted = remember(permissionVersion) { PermissionUtils.canDrawOverlays(context) }
-    val batteryGranted = remember(permissionVersion) {
-        PermissionUtils.isIgnoringBatteryOptimizations(context)
-    }
-    val mediaAccessGranted = remember(permissionVersion) { PermissionUtils.hasNotificationAccess(context) }
+    val notificationGranted = permissionSnapshot.notifications
+    val overlayGranted = permissionSnapshot.overlay
+    val batteryGranted = permissionSnapshot.battery
+    val mediaAccessGranted = permissionSnapshot.mediaAccess
+    val usageAccessGranted = permissionSnapshot.usageAccess
+    val fullScreenIntentGranted = permissionSnapshot.fullScreenIntent
     val customColor = remember(settings.themeId, settings.customSeedArgb) {
         settings.customSeedArgb?.let { Color(it.toInt()) } ?: paletteSeed(settings.themeId, null)
     }
@@ -100,10 +99,20 @@ fun SettingsScreen(
                         },
                     )
                     SwitchRow(
+                        title = stringResource(R.string.settings_notification_actions),
+                        description = stringResource(R.string.settings_notification_actions_desc),
+                        checked = settings.showNotificationActions,
+                        onCheckedChange = { checked ->
+                            onUpdateSettings { it.copy(showNotificationActions = checked) }
+                        },
+                    )
+                    SwitchRow(
                         title = stringResource(R.string.settings_pause_video),
                         description = stringResource(R.string.settings_pause_video_desc),
-                        checked = settings.pauseVideoDuringBreak && mediaAccessGranted,
-                        enabled = mediaAccessGranted,
+                        checked = settings.pauseVideoDuringBreak &&
+                            mediaAccessGranted &&
+                            usageAccessGranted,
+                        enabled = mediaAccessGranted && usageAccessGranted,
                         onCheckedChange = { checked ->
                             onUpdateSettings { it.copy(pauseVideoDuringBreak = checked) }
                         },
@@ -131,8 +140,8 @@ fun SettingsScreen(
             item {
                 AppCard {
                     LinkRow(
-                        title = stringResource(R.string.settings_permission_notifications),
-                        description = stringResource(R.string.home_permission_notification_body),
+                        title = stringResource(R.string.permission_notifications_title),
+                        description = stringResource(R.string.permission_notifications_desc),
                         status = grantStatus(notificationGranted),
                         statusOk = notificationGranted,
                         onClick = {
@@ -144,26 +153,48 @@ fun SettingsScreen(
                         },
                     )
                     LinkRow(
-                        title = stringResource(R.string.settings_permission_overlay),
-                        description = stringResource(R.string.settings_permission_overlay_desc),
+                        title = stringResource(R.string.permission_overlay_title),
+                        description = stringResource(R.string.permission_overlay_desc),
                         status = grantStatus(overlayGranted),
                         statusOk = overlayGranted,
                         onClick = { PermissionUtils.openOverlaySettings(context) },
                     )
                     LinkRow(
-                        title = stringResource(R.string.settings_permission_battery),
-                        description = stringResource(R.string.settings_permission_battery_desc),
+                        title = stringResource(R.string.permission_battery_title),
+                        description = stringResource(R.string.permission_battery_desc),
                         status = grantStatus(batteryGranted),
                         statusOk = batteryGranted,
                         onClick = { PermissionUtils.requestIgnoreBatteryOptimizations(context) },
                     )
                     LinkRow(
-                        title = stringResource(R.string.settings_permission_media),
-                        description = stringResource(R.string.settings_permission_media_desc),
+                        title = stringResource(R.string.permission_media_title),
+                        description = stringResource(R.string.permission_media_desc),
                         status = grantStatus(mediaAccessGranted),
                         statusOk = mediaAccessGranted,
                         onClick = { PermissionUtils.openNotificationAccessSettings(context) },
                     )
+                    LinkRow(
+                        title = stringResource(R.string.permission_usage_title),
+                        description = stringResource(R.string.permission_usage_desc),
+                        status = grantStatus(usageAccessGranted),
+                        statusOk = usageAccessGranted,
+                        onClick = { PermissionUtils.openUsageAccessSettings(context) },
+                    )
+                    LinkRow(
+                        title = stringResource(R.string.settings_permission_fullscreen),
+                        description = stringResource(R.string.settings_permission_fullscreen_desc),
+                        status = grantStatus(fullScreenIntentGranted),
+                        statusOk = fullScreenIntentGranted,
+                        onClick = { PermissionUtils.openFullScreenIntentSettings(context) },
+                    )
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = onOpenPermissionGuide,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.settings_open_permission_guide))
                 }
             }
 

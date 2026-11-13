@@ -29,10 +29,10 @@ class StatsRepository(context: Context) {
         }
     }
 
-    suspend fun recordBreak(completed: Boolean, natural: Boolean = false) {
+    suspend fun recordBreak(completed: Boolean) {
         appContext.careEyesDataStore.edit { preferences ->
             val current = decodeStats(preferences[key])
-            preferences[key] = encode(current.recordBreak(completed = completed, natural = natural))
+            preferences[key] = encode(current.recordBreak(completed = completed))
         }
     }
 

@@ -2,6 +2,7 @@ package org.liaocl.careeyes
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.liaocl.careeyes.data.DailyStats
 import org.liaocl.careeyes.data.StatsData
 import java.time.LocalDate
 
@@ -18,16 +19,24 @@ class StatsTest {
     }
 
     @Test
+    fun restCountIgnoresLegacyNaturalBreaks() {
+        val day = DailyStats(
+            date = today.toString(),
+            breaksCompleted = 2,
+            naturalBreaks = 5,
+        )
+        assertEquals(2, day.restCount)
+    }
+
+    @Test
     fun breakKindsAreCountedSeparately() {
         val stats = StatsData()
             .recordBreak(completed = true, date = today)
             .recordBreak(completed = false, date = today)
-            .recordBreak(completed = false, natural = true, date = today)
         val day = stats.day(today)
         assertEquals(1, day.breaksCompleted)
         assertEquals(1, day.breaksSkipped)
-        assertEquals(1, day.naturalBreaks)
-        assertEquals(2, day.restCount)
+        assertEquals(1, day.restCount)
     }
 
     @Test

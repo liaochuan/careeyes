@@ -61,7 +61,11 @@ object NotificationHelper {
         manager.createNotificationChannels(listOf(main, progress, breakChannel))
     }
 
-    fun buildMain(context: Context, state: RuntimeState): Notification {
+    fun buildMain(
+        context: Context,
+        state: RuntimeState,
+        showActions: Boolean = true,
+    ): Notification {
         val builder = NotificationCompat.Builder(context, CHANNEL_MAIN)
             .setSmallIcon(R.drawable.ic_notification_eye)
             .setColor(context.getColor(R.color.ic_launcher_background))
@@ -83,17 +87,22 @@ object NotificationHelper {
                             state.presetName,
                         ),
                     )
-                    .addAction(0, context.getString(R.string.notif_action_pause), serviceAction(context, EyeCareService.ACTION_PAUSE, 11))
-                    .addAction(0, context.getString(R.string.notif_action_rest_now), serviceAction(context, EyeCareService.ACTION_START_BREAK, 12))
-                    .applyChronometer(state)
+                if (showActions) {
+                    builder
+                        .addAction(0, context.getString(R.string.notif_action_pause), serviceAction(context, EyeCareService.ACTION_PAUSE, 11))
+                        .addAction(0, context.getString(R.string.notif_action_rest_now), serviceAction(context, EyeCareService.ACTION_START_BREAK, 12))
+                }
+                builder.applyChronometer(state)
             }
 
             TimerMode.BREAK -> {
                 builder
                     .setContentTitle(context.getString(R.string.notif_break_title))
                     .setContentText(context.getString(R.string.notif_break_tip))
-                    .addAction(0, context.getString(R.string.notif_action_skip), serviceAction(context, EyeCareService.ACTION_SKIP_BREAK, 13))
-                    .applyChronometer(state)
+                if (showActions) {
+                    builder.addAction(0, context.getString(R.string.notif_action_skip), serviceAction(context, EyeCareService.ACTION_SKIP_BREAK, 13))
+                }
+                builder.applyChronometer(state)
             }
 
             TimerMode.PAUSED -> {
@@ -106,7 +115,9 @@ object NotificationHelper {
                         ),
                     )
                     .setShowWhen(false)
-                    .addAction(0, context.getString(R.string.notif_action_resume), serviceAction(context, EyeCareService.ACTION_RESUME, 14))
+                if (showActions) {
+                    builder.addAction(0, context.getString(R.string.notif_action_resume), serviceAction(context, EyeCareService.ACTION_RESUME, 14))
+                }
             }
 
             TimerMode.IDLE -> {
@@ -114,7 +125,9 @@ object NotificationHelper {
                     .setContentTitle(context.getString(R.string.notif_idle_title))
                     .setContentText(context.getString(R.string.notif_idle_text))
                     .setShowWhen(false)
-                    .addAction(0, context.getString(R.string.home_start), serviceAction(context, EyeCareService.ACTION_START, 15))
+                if (showActions) {
+                    builder.addAction(0, context.getString(R.string.home_start), serviceAction(context, EyeCareService.ACTION_START, 15))
+                }
             }
         }
 

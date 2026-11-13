@@ -6,7 +6,13 @@ object AppVisibility {
     var isVisible: Boolean = false
         private set
 
+    /** True only while the break screen itself is on screen. */
+    @Volatile
+    var isBreakVisible: Boolean = false
+        private set
+
     private var visibleCount: Int = 0
+    private var breakVisibleCount: Int = 0
 
     @Synchronized
     fun onScreenStarted() {
@@ -18,5 +24,17 @@ object AppVisibility {
     fun onScreenStopped() {
         visibleCount = (visibleCount - 1).coerceAtLeast(0)
         isVisible = visibleCount > 0
+    }
+
+    @Synchronized
+    fun onBreakStarted() {
+        breakVisibleCount += 1
+        isBreakVisible = breakVisibleCount > 0
+    }
+
+    @Synchronized
+    fun onBreakStopped() {
+        breakVisibleCount = (breakVisibleCount - 1).coerceAtLeast(0)
+        isBreakVisible = breakVisibleCount > 0
     }
 }

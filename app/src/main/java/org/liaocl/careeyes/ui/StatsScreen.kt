@@ -59,29 +59,22 @@ fun StatsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
+                StatCard(
+                    label = stringResource(R.string.stats_focus_time),
+                    value = durationText(context, today.focusSeconds),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatCard(
-                        label = stringResource(R.string.stats_focus_time),
-                        value = durationText(context, today.focusSeconds),
-                        modifier = Modifier.weight(1f),
-                    )
                     StatCard(
                         label = stringResource(R.string.stats_completed),
                         value = today.breaksCompleted.toString(),
                         modifier = Modifier.weight(1f),
                     )
-                }
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatCard(
                         label = stringResource(R.string.stats_skipped),
                         value = today.breaksSkipped.toString(),
-                        modifier = Modifier.weight(1f),
-                    )
-                    StatCard(
-                        label = stringResource(R.string.stats_natural),
-                        value = today.naturalBreaks.toString(),
                         modifier = Modifier.weight(1f),
                     )
                 }

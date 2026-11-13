@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -66,6 +67,7 @@ class BreakActivity : ComponentActivity() {
     }
 
     private var visibilityRegistered = false
+    private var breakVisibleRegistered = false
 
     private val dismissReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -76,6 +78,7 @@ class BreakActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        NotificationManagerCompat.from(this).cancel(NotificationHelper.ID_BREAK)
         val breakDuration = appContainer.engine.state.value.breakDurationMs
         if (breakDuration in 1L..60_000L) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -132,6 +135,8 @@ class BreakActivity : ComponentActivity() {
             finish()
             return
         }
+        AppVisibility.onBreakStarted()
+        breakVisibleRegistered = true
         ContextCompat.registerReceiver(
             this,
             dismissReceiver,
@@ -142,6 +147,10 @@ class BreakActivity : ComponentActivity() {
 
     override fun onStop() {
         runCatching { unregisterReceiver(dismissReceiver) }
+        if (breakVisibleRegistered) {
+            breakVisibleRegistered = false
+            AppVisibility.onBreakStopped()
+        }
         if (visibilityRegistered) {
             visibilityRegistered = false
             AppVisibility.onScreenStopped()

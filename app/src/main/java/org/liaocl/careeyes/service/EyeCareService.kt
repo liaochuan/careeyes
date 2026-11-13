@@ -52,6 +52,8 @@ class EyeCareService : Service() {
 
         private const val PAUSE_STOP_DELAY_MS = 15 * 60 * 1000L
         private const val PROGRESS_UPDATE_INTERVAL_MS = 30_000L
+        private const val BREAK_FALLBACK_DELAY_MS = 1_500L
+        private const val TAG = "CareEyes"
 
         fun start(context: Context, action: String = ACTION_ENSURE, presetId: String? = null) {
             val intent = Intent(context, EyeCareService::class.java).setAction(action)
@@ -76,6 +78,7 @@ class EyeCareService : Service() {
     private var deadlineJob: Job? = null
     private var progressJob: Job? = null
     private var pauseStopJob: Job? = null
+    private var breakFallbackJob: Job? = null
 
     private var focusSegmentStart: Long? = null
     private var frozenForScreenOff: FrozenTimer? = null
@@ -112,7 +115,7 @@ class EyeCareService : Service() {
         NotificationHelper.ensureChannels(this)
         startForeground(
             NotificationHelper.ID_MAIN,
-            NotificationHelper.buildMain(this, engine.snapshot()),
+            NotificationHelper.buildMain(this, engine.snapshot(), settings.showNotificationActions),
         )
         isForeground = true
         registerScreenReceiver()
@@ -139,6 +142,7 @@ class EyeCareService : Service() {
         deadlineJob?.cancel()
         progressJob?.cancel()
         pauseStopJob?.cancel()
+        breakFallbackJob?.cancel()
         runCatching { unregisterReceiver(screenReceiver) }
         runCatching { NotificationManagerCompat.from(this).cancel(NotificationHelper.ID_PROGRESS) }
         scope.cancel()
@@ -291,17 +295,13 @@ class EyeCareService : Service() {
         launchBreakActivity()
     }
 
-    private fun finishBreak(completed: Boolean, natural: Boolean = false) {
+    private fun finishBreak(completed: Boolean) {
         val state = engine.state.value
         val wasInBreak = state.mode == TimerMode.BREAK ||
             (state.mode == TimerMode.PAUSED && state.pausedMode == PausedMode.BREAK)
-        if (!wasInBreak && !natural) return
+        if (!wasInBreak) return
 
-        if (wasInBreak) {
-            scope.launch { statsRepository.recordBreak(completed = completed) }
-        } else if (natural) {
-            scope.launch { statsRepository.recordBreak(completed = false, natural = true) }
-        }
+        scope.launch { statsRepository.recordBreak(completed = completed) }
 
         pendingBreak = false
         engine.startFocus()
@@ -454,7 +454,6 @@ class EyeCareService : Service() {
             ScreenReturn.ResetFocus -> {
                 frozenForScreenOff = null
                 pendingBreak = false
-                scope.launch { statsRepository.recordBreak(completed = false, natural = true) }
                 engine.startFocus()
                 focusSegmentStart = now()
                 persistRunning()
@@ -488,7 +487,7 @@ class EyeCareService : Service() {
 
     private fun updateNotification() {
         val state = engine.snapshot()
-        val notification = NotificationHelper.buildMain(this, state)
+        val notification = NotificationHelper.buildMain(this, state, settings.showNotificationActions)
         if (isForeground) {
             notifySafely(NotificationHelper.ID_MAIN, notification)
         } else {
@@ -575,19 +574,38 @@ class EyeCareService : Service() {
 
     private fun launchBreakActivity() {
         if (engine.state.value.mode != TimerMode.BREAK) return
-        val canStart = AppVisibility.isVisible || Settings.canDrawOverlays(this)
-        if (!canStart) {
+        val canAttempt = AppVisibility.isVisible || Settings.canDrawOverlays(this)
+        if (!canAttempt) {
+            Log.i(TAG, "break: no overlay permission and app not visible, posting notification")
             postBreakFallbackNotification()
             return
         }
+        if (!startBreakActivity()) {
+            Log.w(TAG, "break: startActivity failed, posting notification")
+            postBreakFallbackNotification()
+            return
+        }
+        // Android can silently deny a background activity start (startActivity still returns
+        // normally), so verify that the break screen itself came to the foreground. Keep a single
+        // pending check so repeated ENSURE actions cannot pile up coroutines.
+        breakFallbackJob?.cancel()
+        breakFallbackJob = scope.launch {
+            delay(BREAK_FALLBACK_DELAY_MS)
+            if (engine.state.value.mode == TimerMode.BREAK && !AppVisibility.isBreakVisible) {
+                Log.w(TAG, "break: screen never became visible, posting notification")
+                postBreakFallbackNotification()
+            }
+        }
+    }
+
+    private fun startBreakActivity(): Boolean {
         val intent = Intent(this, BreakActivity::class.java)
             .addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_NO_ANIMATION,
             )
-        val started = runCatching { startActivity(intent) }.isSuccess
-        if (!started) postBreakFallbackNotification()
+        return runCatching { startActivity(intent) }.isSuccess
     }
 
     private fun postBreakFallbackNotification() {

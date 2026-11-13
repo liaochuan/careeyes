@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import java.io.IOException
 
 internal val Context.careEyesDataStore by preferencesDataStore(name = "careeyes")
@@ -56,8 +57,21 @@ class SettingsRepository(context: Context) {
 
     private fun decodeSettings(raw: String?): AppSettings {
         if (raw.isNullOrBlank()) return AppSettings()
-        return runCatching { careEyesJson.decodeFromString(AppSettings.serializer(), raw) }
+        val decoded = runCatching { careEyesJson.decodeFromString(AppSettings.serializer(), raw) }
             .getOrDefault(AppSettings())
             .normalized()
+        // Settings written before onboarding existed belong to users who already finished setup.
+        return if (isLegacySettings(raw)) decoded.copy(onboardingCompleted = true) else decoded
     }
+}
+
+/**
+ * True for stored settings that predate the onboarding flag. Such installs must not be sent
+ * through the first-run guide again after an update.
+ */
+internal fun isLegacySettings(raw: String?): Boolean {
+    if (raw.isNullOrBlank()) return false
+    return runCatching {
+        !careEyesJson.parseToJsonElement(raw).jsonObject.containsKey("onboardingCompleted")
+    }.getOrDefault(false)
 }

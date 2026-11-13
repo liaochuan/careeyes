@@ -2,6 +2,7 @@ package org.liaocl.careeyes.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,9 +17,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BarChart
-import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
@@ -37,10 +36,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -50,8 +45,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LifecycleEventEffect
 import org.liaocl.careeyes.R
 import org.liaocl.careeyes.data.AppSettings
 import org.liaocl.careeyes.data.StatsData
@@ -60,7 +53,7 @@ import org.liaocl.careeyes.engine.TimerMode
 import org.liaocl.careeyes.ui.components.AppCard
 import org.liaocl.careeyes.ui.components.ProgressRing
 import org.liaocl.careeyes.ui.components.StatCard
-import org.liaocl.careeyes.util.PermissionUtils
+import org.liaocl.careeyes.util.CarePermission
 import org.liaocl.careeyes.util.TimeUtils
 import org.liaocl.careeyes.util.durationText
 
@@ -70,6 +63,8 @@ fun HomeScreen(
     settings: AppSettings,
     stats: StatsData,
     now: Long,
+    showPermissionCard: Boolean,
+    missingPermissions: List<CarePermission>,
     onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -80,17 +75,10 @@ fun HomeScreen(
     onManagePresets: () -> Unit,
     onOpenStats: () -> Unit,
     onOpenSettings: () -> Unit,
-    onRequestNotifications: () -> Unit,
+    onOpenPermissionGuide: () -> Unit,
+    onDismissPermissions: () -> Unit,
 ) {
     val context = LocalContext.current
-    var permissionVersion by remember { mutableIntStateOf(0) }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { permissionVersion += 1 }
-
-    val notificationGranted = remember(permissionVersion) { PermissionUtils.hasNotificationPermission(context) }
-    val overlayGranted = remember(permissionVersion) { PermissionUtils.canDrawOverlays(context) }
-    val batteryGranted = remember(permissionVersion) {
-        PermissionUtils.isIgnoringBatteryOptimizations(context)
-    }
 
     val remaining = when (runtime.mode) {
         TimerMode.FOCUS, TimerMode.BREAK -> runtime.remainingAt(now)
@@ -312,8 +300,7 @@ fun HomeScreen(
                 }
             }
 
-            val missingPermissions = !notificationGranted || !overlayGranted || !batteryGranted
-            if (missingPermissions) {
+            if (showPermissionCard) {
                 item {
                     AppCard {
                         Text(
@@ -321,35 +308,21 @@ fun HomeScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        Spacer(Modifier.height(4.dp))
-                        if (!notificationGranted) {
-                            PermissionItem(
-                                icon = Icons.Rounded.Notifications,
-                                title = stringResource(R.string.home_permission_notification_title),
-                                body = stringResource(R.string.home_permission_notification_body),
-                                action = stringResource(R.string.action_grant),
-                                onClick = onRequestNotifications,
-                            )
+                        missingPermissions.forEach { permission ->
+                            PermissionMissingItem(permission)
                         }
-                        if (!overlayGranted) {
-                            PermissionItem(
-                                icon = Icons.Rounded.Visibility,
-                                title = stringResource(R.string.home_permission_overlay_title),
-                                body = stringResource(R.string.home_permission_overlay_body),
-                                action = stringResource(R.string.action_grant),
-                                onClick = { PermissionUtils.openOverlaySettings(context) },
-                            )
-                        }
-                        if (!batteryGranted) {
-                            PermissionItem(
-                                icon = Icons.Rounded.BatteryFull,
-                                title = stringResource(R.string.home_permission_battery_title),
-                                body = stringResource(R.string.home_permission_battery_body),
-                                action = stringResource(R.string.action_grant),
-                                onClick = { PermissionUtils.requestIgnoreBatteryOptimizations(context) },
-                            )
-                        }
-                    }
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            TextButton(onClick = onDismissPermissions) {
+                                Text(stringResource(R.string.home_permission_dismiss))
+                            }
+                            TextButton(onClick = onOpenPermissionGuide) {
+                                Text(stringResource(R.string.home_permission_open_guide))
+                            }
+                        }                    }
                 }
             }
 
@@ -392,29 +365,37 @@ private fun statusLabel(mode: TimerMode): String = when (mode) {
 }
 
 @Composable
-private fun PermissionItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    body: String,
-    action: String,
-    onClick: () -> Unit,
-) {
+private fun PermissionMissingItem(permission: CarePermission) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Icon(
+            imageVector = permission.icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp),
+        )
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(permission.title(), style = MaterialTheme.typography.bodyLarge)
+                if (permission.isOptional) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.permission_optional),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
             Text(
-                body,
+                text = permission.description(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = onClick) { Text(action) }
     }
 }

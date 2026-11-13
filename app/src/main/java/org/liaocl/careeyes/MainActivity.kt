@@ -14,6 +14,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -26,9 +27,13 @@ import org.liaocl.careeyes.util.PermissionUtils
 
 class MainActivity : ComponentActivity() {
     private var hideFromRecents: Boolean = true
+    private var notificationRequested: Boolean = false
+    private val permissionRefreshKey = mutableIntStateOf(0)
 
     private val notificationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            permissionRefreshKey.intValue += 1
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +63,7 @@ class MainActivity : ComponentActivity() {
                     AppRoot(
                         container = appContainer,
                         onRequestNotifications = ::requestNotificationPermission,
+                        permissionRefreshKey = permissionRefreshKey.intValue,
                     )
                 }
             }
@@ -84,7 +90,14 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             !PermissionUtils.hasNotificationPermission(this)
         ) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            val canAskAgain = shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+            if (canAskAgain || !notificationRequested) {
+                notificationRequested = true
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                // Permanently denied: the system dialog no longer appears, so open app settings.
+                PermissionUtils.openNotificationSettings(this)
+            }
         } else {
             PermissionUtils.openNotificationSettings(this)
         }
