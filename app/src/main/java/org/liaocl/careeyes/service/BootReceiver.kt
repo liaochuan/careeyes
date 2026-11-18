@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.liaocl.careeyes.appContainer
+import org.liaocl.careeyes.data.shouldRestoreAfterBoot
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -19,7 +20,7 @@ class BootReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val settings = context.appContainer.settingsRepository.load()
-                if (settings.autoStartOnBoot && settings.running) {
+                if (shouldRestoreAfterBoot(settings)) {
                     runCatching { EyeCareService.start(context, EyeCareService.ACTION_ENSURE) }
                 }
             } finally {

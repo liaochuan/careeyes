@@ -1,6 +1,8 @@
 package org.liaocl.careeyes.ui
 
+import android.content.Intent
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,18 +19,21 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.liaocl.careeyes.data.AppContainer
 import org.liaocl.careeyes.data.AppSettings
 import org.liaocl.careeyes.data.Preset
+import org.liaocl.careeyes.R
 import org.liaocl.careeyes.service.EyeCareService
+import org.liaocl.careeyes.util.MediaPauseJournal
 import org.liaocl.careeyes.util.PermissionUtils
 import org.liaocl.careeyes.util.pruneDismissed
 import org.liaocl.careeyes.util.shouldShowPermissionCard
 
-private enum class AppPage { ONBOARDING, HOME, PRESETS, STATS, SETTINGS }
+private enum class AppPage { ONBOARDING, HOME, PRESETS, STATS, SETTINGS, PAUSE_APPS }
 
 @Composable
 fun AppRoot(
@@ -112,7 +117,7 @@ fun AppRoot(
         if (page == AppPage.ONBOARDING) {
             finishOnboarding()
         } else {
-            pageName = AppPage.HOME.name
+            pageName = if (page == AppPage.PAUSE_APPS) AppPage.SETTINGS.name else AppPage.HOME.name
         }
     }
 
@@ -120,6 +125,28 @@ fun AppRoot(
         scope.launch {
             container.settingsRepository.update(transform)
             EyeCareService.start(context, EyeCareService.ACTION_RELOAD)
+        }
+    }
+
+    val exportMediaLog: () -> Unit = {
+        if (MediaPauseJournal.read(context).isBlank()) {
+            Toast.makeText(context, R.string.log_export_empty, Toast.LENGTH_SHORT).show()
+        } else {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                MediaPauseJournal.logFile(context),
+            )
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.log_export_title))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = Intent.createChooser(share, context.getString(R.string.log_export_title))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(chooser) }
+                .onFailure { Toast.makeText(context, R.string.log_export_failed, Toast.LENGTH_SHORT).show() }
         }
     }
 
@@ -216,6 +243,14 @@ fun AppRoot(
             onUpdateSettings = updateSettings,
             onRequestNotifications = onRequestNotifications,
             onOpenPermissionGuide = openPermissionGuide,
+            onOpenPauseApps = { pageName = AppPage.PAUSE_APPS.name },
+            onExportMediaLog = exportMediaLog,
+        )
+
+        AppPage.PAUSE_APPS -> PauseAppsScreen(
+            settings = settings,
+            onBack = { pageName = AppPage.SETTINGS.name },
+            onUpdateSettings = updateSettings,
         )
     }
 }

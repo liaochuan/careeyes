@@ -34,6 +34,7 @@ import org.liaocl.careeyes.engine.PausedMode
 import org.liaocl.careeyes.engine.ScreenReturn
 import org.liaocl.careeyes.engine.TimerMode
 import org.liaocl.careeyes.engine.screenReturn
+import org.liaocl.careeyes.engine.timedPauseExpired
 import org.liaocl.careeyes.util.PermissionUtils
 import kotlin.math.roundToInt
 
@@ -49,15 +50,26 @@ class EyeCareService : Service() {
         const val ACTION_SET_PRESET = "org.liaocl.careeyes.action.SET_PRESET"
         const val ACTION_RELOAD = "org.liaocl.careeyes.action.RELOAD"
         const val EXTRA_PRESET_ID = "org.liaocl.careeyes.extra.PRESET_ID"
+        const val EXTRA_PAUSE_MINUTES = "org.liaocl.careeyes.extra.PAUSE_MINUTES"
+        const val EXTRA_SKIP_BREAK = "org.liaocl.careeyes.extra.SKIP_BREAK"
 
         private const val PAUSE_STOP_DELAY_MS = 15 * 60 * 1000L
         private const val PROGRESS_UPDATE_INTERVAL_MS = 30_000L
         private const val BREAK_FALLBACK_DELAY_MS = 1_500L
+        private const val MINUTE_MS = 60_000L
         private const val TAG = "CareEyes"
 
-        fun start(context: Context, action: String = ACTION_ENSURE, presetId: String? = null) {
+        fun start(
+            context: Context,
+            action: String = ACTION_ENSURE,
+            presetId: String? = null,
+            pauseMinutes: Int? = null,
+            skipBreak: Boolean = false,
+        ) {
             val intent = Intent(context, EyeCareService::class.java).setAction(action)
             if (presetId != null) intent.putExtra(EXTRA_PRESET_ID, presetId)
+            if (pauseMinutes != null) intent.putExtra(EXTRA_PAUSE_MINUTES, pauseMinutes)
+            if (skipBreak) intent.putExtra(EXTRA_SKIP_BREAK, true)
             runCatching { ContextCompat.startForegroundService(context, intent) }
                 .onFailure { Log.w("CareEyes", "Unable to start service for $action", it) }
         }
@@ -78,6 +90,7 @@ class EyeCareService : Service() {
     private var deadlineJob: Job? = null
     private var progressJob: Job? = null
     private var pauseStopJob: Job? = null
+    private var pauseEndJob: Job? = null
     private var breakFallbackJob: Job? = null
 
     private var focusSegmentStart: Long? = null
@@ -96,10 +109,12 @@ class EyeCareService : Service() {
                 Intent.ACTION_SCREEN_ON -> {
                     accumulateScreenOffTime()
                     if (keyguardManager?.isKeyguardLocked == false) restoreAfterScreenOn()
+                    resumeExpiredTimedPause()
                 }
                 Intent.ACTION_USER_PRESENT -> {
                     accumulateScreenOffTime()
                     if (keyguardManager?.isKeyguardLocked == false) restoreAfterScreenOn()
+                    resumeExpiredTimedPause()
                 }
             }
         }
@@ -124,12 +139,14 @@ class EyeCareService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: ACTION_ENSURE
         val presetId = intent?.getStringExtra(EXTRA_PRESET_ID)
+        val pauseMinutes = intent?.getIntExtra(EXTRA_PAUSE_MINUTES, 0)?.takeIf { it > 0 }
+        val skipBreak = intent?.getBooleanExtra(EXTRA_SKIP_BREAK, false) == true
         scope.launch {
             actionMutex.withLock {
                 ensureInitialized()
                 when (action) {
                     ACTION_RELOAD -> reloadSettings()
-                    else -> handleAction(action, presetId)
+                    else -> handleAction(action, presetId, pauseMinutes, skipBreak)
                 }
             }
         }
@@ -142,6 +159,7 @@ class EyeCareService : Service() {
         deadlineJob?.cancel()
         progressJob?.cancel()
         pauseStopJob?.cancel()
+        pauseEndJob?.cancel()
         breakFallbackJob?.cancel()
         runCatching { unregisterReceiver(screenReceiver) }
         runCatching { NotificationManagerCompat.from(this).cancel(NotificationHelper.ID_PROGRESS) }
@@ -155,12 +173,20 @@ class EyeCareService : Service() {
         initMutex.withLock {
             if (initialized) return
             settings = settingsRepository.load()
+            val pauseExpired = timedPauseExpired(
+                settings.pausedUntilEpochMs,
+                System.currentTimeMillis(),
+            )
             engine.prepare(
                 preset = settings.currentPreset(),
-                running = settings.running,
+                running = settings.running || pauseExpired,
                 savedRemainingMs = settings.pausedRemainingMs,
                 savedPausedMode = parsePausedMode(settings.pausedMode),
             )
+            if (pauseExpired) {
+                // The timed pause ended while the process was gone: start a fresh focus cycle.
+                persistRunning()
+            }
             if (engine.state.value.mode == TimerMode.FOCUS &&
                 (powerManager?.isInteractive == false || keyguardManager?.isKeyguardLocked == true)
             ) {
@@ -175,18 +201,28 @@ class EyeCareService : Service() {
             scheduleDeadline()
             updateProgressJob()
             if (engine.state.value.mode == TimerMode.PAUSED && frozenForScreenOff == null) {
+                schedulePauseEnd(settings.pausedUntilEpochMs)
                 schedulePauseStop()
             }
         }
     }
 
-    private suspend fun handleAction(action: String, presetId: String?) {
+    private suspend fun handleAction(
+        action: String,
+        presetId: String?,
+        pauseMinutes: Int?,
+        skipBreak: Boolean,
+    ) {
         when (action) {
             ACTION_ENSURE -> {
                 when (engine.state.value.mode) {
                     TimerMode.IDLE -> if (settings.running) startFreshFocus()
                     TimerMode.PAUSED -> {
-                        if (settings.running &&
+                        val timedOut = timedPauseExpired(
+                            settings.pausedUntilEpochMs,
+                            System.currentTimeMillis(),
+                        )
+                        if ((settings.running || timedOut) &&
                             screenOffAt == 0L &&
                             powerManager?.isInteractive != false &&
                             keyguardManager?.isKeyguardLocked != true
@@ -201,7 +237,7 @@ class EyeCareService : Service() {
             }
 
             ACTION_START -> startFreshFocus()
-            ACTION_PAUSE -> pauseTimer()
+            ACTION_PAUSE -> pauseTimer(pauseMinutes, skipBreak)
             ACTION_RESUME -> resumeTimer()
             ACTION_RESET -> {
                 if (engine.state.value.mode == TimerMode.BREAK) {
@@ -233,18 +269,25 @@ class EyeCareService : Service() {
         afterStateChange()
     }
 
-    private fun pauseTimer() {
-        val state = engine.state.value
-        if (state.mode != TimerMode.FOCUS && state.mode != TimerMode.BREAK) return
+    private fun pauseTimer(minutes: Int? = null, skipBreak: Boolean = false) {
+        val mode = engine.state.value.mode
+        if (mode == TimerMode.PAUSED || mode == TimerMode.IDLE) return
+        if (mode == TimerMode.BREAK && skipBreak) {
+            // Pausing from the break screen gives up this break; resume starts a full focus cycle.
+            scope.launch { statsRepository.recordBreak(completed = false) }
+            engine.startFocus()
+        }
         flushFocus()
         val frozen = engine.pause() ?: return
         focusSegmentStart = null
         pendingBreak = false
-        persistPaused(frozen)
+        val pausedUntil = minutes?.let { System.currentTimeMillis() + it * MINUTE_MS } ?: 0L
+        persistPaused(frozen, pausedUntil)
         cancelDeadline()
         dismissBreakActivity()
         updateNotification()
         updateProgressJob()
+        schedulePauseEnd(pausedUntil)
         schedulePauseStop()
     }
 
@@ -255,6 +298,7 @@ class EyeCareService : Service() {
             return
         }
         pauseStopJob?.cancel()
+        pauseEndJob?.cancel()
         if (state.remainingMs <= 0L) {
             if (state.pausedMode == PausedMode.FOCUS) {
                 startBreak()
@@ -289,7 +333,13 @@ class EyeCareService : Service() {
         afterStateChange()
         if (settings.pauseVideoDuringBreak) {
             scope.launch(Dispatchers.IO) {
-                runCatching { MediaPauseController.pausePlaying(applicationContext) }
+                runCatching {
+                    MediaPauseController.pausePlaying(
+                        applicationContext,
+                        settings.pauseAppPackages,
+                        settings.mediaPauseDebugLog,
+                    )
+                }
             }
         }
         launchBreakActivity()
@@ -485,9 +535,26 @@ class EyeCareService : Service() {
         onScreenOff()
     }
 
+    /**
+     * delay() only advances while the CPU is awake, so a timed pause can expire during deep sleep
+     * without its job firing. Screen-on and unlock are the reliable moments to catch up.
+     */
+    private fun resumeExpiredTimedPause() {
+        if (engine.state.value.mode != TimerMode.PAUSED) return
+        if (powerManager?.isInteractive == false) return
+        if (keyguardManager?.isKeyguardLocked == true) return
+        if (!timedPauseExpired(settings.pausedUntilEpochMs, System.currentTimeMillis())) return
+        resumeTimer()
+    }
+
     private fun updateNotification() {
         val state = engine.snapshot()
-        val notification = NotificationHelper.buildMain(this, state, settings.showNotificationActions)
+        val notification = NotificationHelper.buildMain(
+            this,
+            state,
+            settings.showNotificationActions,
+            settings.pausedUntilEpochMs,
+        )
         if (isForeground) {
             notifySafely(NotificationHelper.ID_MAIN, notification)
         } else {
@@ -524,6 +591,8 @@ class EyeCareService : Service() {
 
     private fun schedulePauseStop() {
         pauseStopJob?.cancel()
+        // A timed pause must keep the service alive so it can resume on time.
+        if (settings.pausedUntilEpochMs > 0L) return
         pauseStopJob = scope.launch {
             delay(PAUSE_STOP_DELAY_MS)
             if (engine.state.value.mode == TimerMode.PAUSED && initialized) {
@@ -535,18 +604,43 @@ class EyeCareService : Service() {
         }
     }
 
-    private fun persistRunning() {
-        settings = settings.copy(running = true)
-        scope.launch {
-            settingsRepository.update { it.copy(running = true) }
+    private fun schedulePauseEnd(pausedUntilEpochMs: Long) {
+        pauseEndJob?.cancel()
+        pauseEndJob = null
+        if (pausedUntilEpochMs <= 0L) return
+        pauseEndJob = scope.launch {
+            // delay() counts awake time only: deep sleep postpones expiry. The loop handles early
+            // wake and wall-clock jumps; ENSURE, screen-on and unlock compensate after sleep.
+            var waitMs = pausedUntilEpochMs - System.currentTimeMillis()
+            while (waitMs > 0L && isActive) {
+                delay(waitMs)
+                waitMs = pausedUntilEpochMs - System.currentTimeMillis()
+            }
+            if (engine.state.value.mode == TimerMode.PAUSED) {
+                resumeTimer()
+                // The timed pause can end while the screen is off; keep the timer frozen as usual.
+                if (engine.state.value.mode == TimerMode.FOCUS &&
+                    (powerManager?.isInteractive == false || keyguardManager?.isKeyguardLocked == true)
+                ) {
+                    onScreenOff()
+                }
+            }
         }
     }
 
-    private fun persistPaused(frozen: FrozenTimer) {
+    private fun persistRunning() {
+        settings = settings.copy(running = true, pausedUntilEpochMs = 0L)
+        scope.launch {
+            settingsRepository.update { it.copy(running = true, pausedUntilEpochMs = 0L) }
+        }
+    }
+
+    private fun persistPaused(frozen: FrozenTimer, pausedUntilEpochMs: Long) {
         settings = settings.copy(
             running = false,
             pausedRemainingMs = frozen.remainingMs,
             pausedMode = frozen.pausedMode.name,
+            pausedUntilEpochMs = pausedUntilEpochMs,
         )
         scope.launch {
             settingsRepository.update {
@@ -554,6 +648,7 @@ class EyeCareService : Service() {
                     running = false,
                     pausedRemainingMs = frozen.remainingMs,
                     pausedMode = frozen.pausedMode.name,
+                    pausedUntilEpochMs = pausedUntilEpochMs,
                 )
             }
         }

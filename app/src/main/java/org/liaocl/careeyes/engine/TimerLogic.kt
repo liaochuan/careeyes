@@ -17,6 +17,10 @@ sealed interface ScreenReturn {
 fun remainingMs(deadlineElapsedMs: Long, nowElapsedMs: Long): Long =
     (deadlineElapsedMs - nowElapsedMs).coerceAtLeast(0L)
 
+/** A timed pause is due once its wall-clock resume moment is reached; 0 means no deadline. */
+fun timedPauseExpired(pausedUntilEpochMs: Long, nowEpochMs: Long): Boolean =
+    pausedUntilEpochMs in 1..nowEpochMs
+
 /**
  * Decides what to do when the screen comes back on.
  *

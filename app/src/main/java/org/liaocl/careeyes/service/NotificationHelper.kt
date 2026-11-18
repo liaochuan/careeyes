@@ -13,6 +13,8 @@ import org.liaocl.careeyes.engine.RuntimeState
 import org.liaocl.careeyes.engine.TimerMode
 import org.liaocl.careeyes.util.TimeUtils
 import org.liaocl.careeyes.util.durationText
+import java.text.DateFormat
+import java.util.Date
 
 object NotificationHelper {
     const val CHANNEL_MAIN = "care_eyes_status"
@@ -65,6 +67,7 @@ object NotificationHelper {
         context: Context,
         state: RuntimeState,
         showActions: Boolean = true,
+        pausedUntilEpochMs: Long = 0L,
     ): Notification {
         val builder = NotificationCompat.Builder(context, CHANNEL_MAIN)
             .setSmallIcon(R.drawable.ic_notification_eye)
@@ -106,15 +109,30 @@ object NotificationHelper {
             }
 
             TimerMode.PAUSED -> {
-                builder
-                    .setContentTitle(context.getString(R.string.notif_paused_title))
-                    .setContentText(
-                        context.getString(
-                            R.string.notif_paused_text,
-                            TimeUtils.formatMmSs(state.remainingMs),
-                        ),
-                    )
-                    .setShowWhen(false)
+                builder.setContentTitle(context.getString(R.string.notif_paused_title))
+                if (pausedUntilEpochMs > 0L) {
+                    builder
+                        .setContentText(
+                            context.getString(
+                                R.string.notif_paused_until_text,
+                                DateFormat.getTimeInstance(DateFormat.SHORT)
+                                    .format(Date(pausedUntilEpochMs)),
+                            ),
+                        )
+                        .setWhen(pausedUntilEpochMs)
+                        .setShowWhen(true)
+                        .setUsesChronometer(true)
+                        .setChronometerCountDown(true)
+                } else {
+                    builder
+                        .setContentText(
+                            context.getString(
+                                R.string.notif_paused_text,
+                                TimeUtils.formatMmSs(state.remainingMs),
+                            ),
+                        )
+                        .setShowWhen(false)
+                }
                 if (showActions) {
                     builder.addAction(0, context.getString(R.string.notif_action_resume), serviceAction(context, EyeCareService.ACTION_RESUME, 14))
                 }

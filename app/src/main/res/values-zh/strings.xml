@@ -4,6 +4,7 @@
 
     <string name="action_back">返回</string>
     <string name="action_cancel">取消</string>
+    <string name="action_confirm">确定</string>
     <string name="action_save">保存</string>
     <string name="action_apply">应用</string>
     <string name="action_delete">删除</string>
@@ -93,11 +94,31 @@
     <string name="settings_notification_actions">通知操作按钮</string>
     <string name="settings_notification_actions_desc">在状态通知上显示暂停、立即休息等按钮。通知本身用于保持计时在后台运行，无法隐藏。</string>
     <string name="settings_pause_video">休息时暂停视频</string>
-    <string name="settings_pause_video_desc">休息开始时只暂停当前前台应用的视频，后台音乐不受影响。需要通知使用权和使用情况访问。</string>
+    <string name="settings_pause_video_desc">休息开始时暂停下面列表中允许的应用（仅当它在前台播放）。需要通知使用权和使用情况访问。</string>
+    <string name="settings_pause_apps_title">暂停的应用</string>
+    <string name="settings_pause_apps_desc">只有列表中的应用在前台播放时才会暂停；其余应用（含音乐）继续播放。</string>
+    <string name="settings_pause_apps_count">已启用 %1$d 个应用</string>
+    <string name="pause_apps_search">搜索应用</string>
+    <string name="pause_apps_restore_defaults">恢复默认</string>
+    <string name="pause_apps_empty">没有匹配的应用</string>
+    <string name="settings_section_diagnostics">诊断</string>
+    <string name="settings_media_debug_log">记录暂停诊断日志</string>
+    <string name="settings_media_debug_log_desc">开启后把媒体暂停的判定过程写入系统日志，便于排查问题；排查完请关闭。</string>
+    <string name="settings_export_media_log">导出诊断日志</string>
+    <string name="settings_export_media_log_desc">开启诊断后记录的内容保存在本机，点此通过系统分享导出；不分享不会外传。</string>
+    <string name="action_export">导出</string>
+    <string name="log_export_title">分享诊断日志</string>
+    <string name="log_export_empty">暂无诊断日志</string>
+    <string name="log_export_failed">无法打开分享目标</string>
     <string name="settings_autostart">开机自启</string>
     <string name="settings_autostart_desc">设备重启后自动恢复计时。</string>
     <string name="settings_hide_recents">最近任务隐藏</string>
     <string name="settings_hide_recents_desc">从最近任务列表中隐藏本应用。关闭后可从最近任务切回。</string>
+    <string name="settings_timed_pause_duration">时间暂停时长</string>
+    <string name="settings_timed_pause_duration_desc">用于休息页上的“时间暂停”按钮。</string>
+    <string name="settings_timed_pause_dialog_title">时间暂停时长</string>
+    <string name="settings_timed_pause_dialog_hint">分钟（1–1440）</string>
+    <string name="settings_timed_pause_invalid">请输入 1–1440 之间的数字。</string>
     <string name="settings_section_permissions">权限</string>
     <string name="settings_granted">已授权</string>
     <string name="settings_not_granted">未授权</string>
@@ -138,6 +159,7 @@
     <string name="notif_break_tip">看向 6 米外，放松眼睛。</string>
     <string name="notif_paused_title">已暂停</string>
     <string name="notif_paused_text">已暂停 · 剩余 %1$s</string>
+    <string name="notif_paused_until_text">已暂停 · %1$s 自动恢复</string>
     <string name="notif_idle_title">已就绪</string>
     <string name="notif_idle_text">点击开始，进入专注。</string>
     <string name="notif_action_pause">暂停</string>
@@ -156,6 +178,8 @@
     <string name="break_subtitle">看向 6 米（20 英尺）外，慢慢眨眼。</string>
     <string name="break_seconds_unit">秒</string>
     <string name="break_skip">跳过休息</string>
+    <string name="break_pause_timed">暂停 %1$d 分钟</string>
+    <string name="break_pause_indefinite">长期暂停</string>
     <string name="break_next_auto">休息结束后会自动开始下一轮专注。</string>
 
     <string name="duration_hours_minutes">%1$d 小时 %2$d 分钟</string>

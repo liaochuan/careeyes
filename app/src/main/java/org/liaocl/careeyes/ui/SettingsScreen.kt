@@ -19,13 +19,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,12 +43,15 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import org.liaocl.careeyes.BuildConfig
 import org.liaocl.careeyes.R
 import org.liaocl.careeyes.data.AppSettings
+import org.liaocl.careeyes.data.parseTimedPauseMinutes
 import org.liaocl.careeyes.ui.components.AppCard
 import org.liaocl.careeyes.ui.components.LinkRow
+import org.liaocl.careeyes.ui.components.NavRow
 import org.liaocl.careeyes.ui.components.ScreenScaffold
 import org.liaocl.careeyes.ui.components.SectionHeader
 import org.liaocl.careeyes.ui.components.SwitchRow
@@ -53,6 +60,7 @@ import org.liaocl.careeyes.ui.theme.ColorPickerDialog
 import org.liaocl.careeyes.ui.theme.paletteSeed
 import org.liaocl.careeyes.util.PermissionSnapshot
 import org.liaocl.careeyes.util.PermissionUtils
+import org.liaocl.careeyes.util.installedLaunchableApps
 
 @Composable
 fun SettingsScreen(
@@ -62,9 +70,13 @@ fun SettingsScreen(
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
     onRequestNotifications: () -> Unit,
     onOpenPermissionGuide: () -> Unit,
+    onOpenPauseApps: () -> Unit,
+    onExportMediaLog: () -> Unit,
 ) {
     val context = LocalContext.current
     var showColorPicker by remember { mutableStateOf(false) }
+    var showPauseDurationDialog by remember { mutableStateOf(false) }
+    var pauseDurationInput by remember { mutableStateOf("") }
 
     val notificationGranted = permissionSnapshot.notifications
     val overlayGranted = permissionSnapshot.overlay
@@ -74,6 +86,11 @@ fun SettingsScreen(
     val fullScreenIntentGranted = permissionSnapshot.fullScreenIntent
     val customColor = remember(settings.themeId, settings.customSeedArgb) {
         settings.customSeedArgb?.let { Color(it.toInt()) } ?: paletteSeed(settings.themeId, null)
+    }
+    // Count only apps the user can actually see and toggle on the "apps to pause" page.
+    val enabledPauseAppCount = remember(settings.pauseAppPackages) {
+        val installed = installedLaunchableApps(context).mapTo(HashSet()) { it.packageName }
+        settings.pauseAppPackages.count { it in installed }
     }
 
     ScreenScaffold(title = stringResource(R.string.settings_title), onBack = onBack) { padding ->
@@ -115,6 +132,26 @@ fun SettingsScreen(
                         enabled = mediaAccessGranted && usageAccessGranted,
                         onCheckedChange = { checked ->
                             onUpdateSettings { it.copy(pauseVideoDuringBreak = checked) }
+                        },
+                    )
+                    NavRow(
+                        title = stringResource(R.string.settings_pause_apps_title),
+                        description = stringResource(
+                            R.string.settings_pause_apps_count,
+                            enabledPauseAppCount,
+                        ),
+                        onClick = onOpenPauseApps,
+                    )
+                    SettingsValueRow(
+                        title = stringResource(R.string.settings_timed_pause_duration),
+                        description = stringResource(R.string.settings_timed_pause_duration_desc),
+                        actionLabel = stringResource(
+                            R.string.duration_minutes,
+                            settings.timedPauseMinutes,
+                        ),
+                        onClick = {
+                            pauseDurationInput = settings.timedPauseMinutes.toString()
+                            showPauseDurationDialog = true
                         },
                     )
                     SwitchRow(
@@ -286,6 +323,26 @@ fun SettingsScreen(
                 }
             }
 
+            item { SectionHeader(stringResource(R.string.settings_section_diagnostics)) }
+            item {
+                AppCard {
+                    SwitchRow(
+                        title = stringResource(R.string.settings_media_debug_log),
+                        description = stringResource(R.string.settings_media_debug_log_desc),
+                        checked = settings.mediaPauseDebugLog,
+                        onCheckedChange = { checked ->
+                            onUpdateSettings { it.copy(mediaPauseDebugLog = checked) }
+                        },
+                    )
+                    NavRow(
+                        title = stringResource(R.string.settings_export_media_log),
+                        description = stringResource(R.string.settings_export_media_log_desc),
+                        actionLabel = stringResource(R.string.action_export),
+                        onClick = onExportMediaLog,
+                    )
+                }
+            }
+
             item { SectionHeader(stringResource(R.string.settings_section_about)) }
             item {
                 AppCard {
@@ -325,6 +382,51 @@ fun SettingsScreen(
                     it.copy(themeId = "custom", customSeedArgb = color.toArgb().toLong())
                 }
                 showColorPicker = false
+            },
+        )
+    }
+
+    if (showPauseDurationDialog) {
+        val parsed = parseTimedPauseMinutes(pauseDurationInput)
+        AlertDialog(
+            onDismissRequest = { showPauseDurationDialog = false },
+            title = { Text(stringResource(R.string.settings_timed_pause_dialog_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = pauseDurationInput,
+                        onValueChange = { pauseDurationInput = it.filter(Char::isDigit).take(4) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        label = { Text(stringResource(R.string.settings_timed_pause_dialog_hint)) },
+                        isError = parsed == null && pauseDurationInput.isNotEmpty(),
+                    )
+                    if (parsed == null && pauseDurationInput.isNotEmpty()) {
+                        Text(
+                            text = stringResource(R.string.settings_timed_pause_invalid),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = parsed != null,
+                    onClick = {
+                        parsed?.let { minutes ->
+                            onUpdateSettings { it.copy(timedPauseMinutes = minutes) }
+                            showPauseDurationDialog = false
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.action_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPauseDurationDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
             },
         )
     }
@@ -383,6 +485,42 @@ private fun DarkModeChip(label: String, selected: Boolean, onClick: () -> Unit) 
         onClick = onClick,
         label = { Text(label) },
     )
+}
+
+/** Row that opens a settings value dialog; mirrors the custom colour row. */
+@Composable
+private fun SettingsValueRow(
+    title: String,
+    description: String,
+    actionLabel: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = actionLabel,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
 }
 
 @Composable

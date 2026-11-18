@@ -17,18 +17,23 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -121,6 +126,9 @@ class BreakActivity : ComponentActivity() {
                     presetName = runtime.presetName,
                     seconds = seconds,
                     progress = progress,
+                    timedPauseMinutes = settings.timedPauseMinutes,
+                    onPauseTimed = { pauseBreak(settings.timedPauseMinutes) },
+                    onPauseIndefinite = { pauseBreak(null) },
                     onSkip = ::skipBreak,
                 )
             }
@@ -163,6 +171,16 @@ class BreakActivity : ComponentActivity() {
         finish()
     }
 
+    private fun pauseBreak(minutes: Int?) {
+        EyeCareService.start(
+            this,
+            EyeCareService.ACTION_PAUSE,
+            pauseMinutes = minutes,
+            skipBreak = true,
+        )
+        finish()
+    }
+
     private fun hideSystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -177,6 +195,9 @@ private fun BreakContent(
     presetName: String,
     seconds: Int,
     progress: Float,
+    timedPauseMinutes: Int,
+    onPauseTimed: () -> Unit,
+    onPauseIndefinite: () -> Unit,
     onSkip: () -> Unit,
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -247,13 +268,43 @@ private fun BreakContent(
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(36.dp))
-            Button(onClick = onSkip) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Button(
+                    onClick = onPauseTimed,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        Icons.Rounded.Pause,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.break_pause_timed, timedPauseMinutes),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                OutlinedButton(
+                    onClick = onPauseIndefinite,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(
+                        text = stringResource(R.string.break_pause_indefinite),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onSkip) {
                 Icon(
                     Icons.Rounded.Close,
                     contentDescription = null,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(16.dp),
                 )
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
                 Text(stringResource(R.string.break_skip))
             }
             Spacer(Modifier.height(12.dp))

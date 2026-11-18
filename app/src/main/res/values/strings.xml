@@ -4,6 +4,7 @@
 
     <string name="action_back">Back</string>
     <string name="action_cancel">Cancel</string>
+    <string name="action_confirm">OK</string>
     <string name="action_save">Save</string>
     <string name="action_apply">Apply</string>
     <string name="action_delete">Delete</string>
@@ -94,11 +95,31 @@
     <string name="settings_notification_actions">Notification buttons</string>
     <string name="settings_notification_actions_desc">Show pause, rest now and similar buttons on the status notification. The notification itself keeps timing alive and cannot be hidden.</string>
     <string name="settings_pause_video">Pause video during breaks</string>
-    <string name="settings_pause_video_desc">Pause video playing in the foreground when a break starts. Requires notification access and usage access; background music keeps playing.</string>
+    <string name="settings_pause_video_desc">Pause the apps you allow below when they play in the foreground during a break. Requires notification access and usage access.</string>
+    <string name="settings_pause_apps_title">Apps to pause</string>
+    <string name="settings_pause_apps_desc">Only the apps in this list are paused when a break starts; everything else, including music, keeps playing.</string>
+    <string name="settings_pause_apps_count">%1$d apps enabled</string>
+    <string name="pause_apps_search">Search apps</string>
+    <string name="pause_apps_restore_defaults">Restore defaults</string>
+    <string name="pause_apps_empty">No matching apps</string>
+    <string name="settings_section_diagnostics">Diagnostics</string>
+    <string name="settings_media_debug_log">Log pause diagnostics</string>
+    <string name="settings_media_debug_log_desc">Turn on to write pause decisions to the system log while troubleshooting; turn it off afterwards.</string>
+    <string name="settings_export_media_log">Export diagnostics log</string>
+    <string name="settings_export_media_log_desc">Saved on this device while diagnostics are on; sharing opens the system share sheet.</string>
+    <string name="action_export">Export</string>
+    <string name="log_export_title">Share diagnostics log</string>
+    <string name="log_export_empty">No diagnostics log yet</string>
+    <string name="log_export_failed">Unable to open a share target</string>
     <string name="settings_autostart">Start on boot</string>
     <string name="settings_autostart_desc">Restore the timer after the device restarts.</string>
     <string name="settings_hide_recents">Hide from recents</string>
     <string name="settings_hide_recents_desc">Remove CareEyes from the recent apps list. Disable this if you want to switch back from recents.</string>
+    <string name="settings_timed_pause_duration">Timed pause length</string>
+    <string name="settings_timed_pause_duration_desc">Used by the timed pause button on the break screen.</string>
+    <string name="settings_timed_pause_dialog_title">Timed pause length</string>
+    <string name="settings_timed_pause_dialog_hint">Minutes (1–1440)</string>
+    <string name="settings_timed_pause_invalid">Enter a number between 1 and 1440.</string>
     <string name="settings_section_permissions">Permissions</string>
     <string name="settings_granted">Granted</string>
     <string name="settings_not_granted">Not granted</string>
@@ -139,6 +160,7 @@
     <string name="notif_break_tip">Look 20 feet away and relax your eyes.</string>
     <string name="notif_paused_title">Paused</string>
     <string name="notif_paused_text">Paused · %1$s remaining</string>
+    <string name="notif_paused_until_text">Paused · auto-resumes at %1$s</string>
     <string name="notif_idle_title">Ready</string>
     <string name="notif_idle_text">Tap start to begin a focus session.</string>
     <string name="notif_action_pause">Pause</string>
@@ -157,6 +179,8 @@
     <string name="break_subtitle">Look about 20 feet (6 m) away and blink slowly.</string>
     <string name="break_seconds_unit">seconds</string>
     <string name="break_skip">Skip break</string>
+    <string name="break_pause_timed">Pause %1$d min</string>
+    <string name="break_pause_indefinite">Pause until I resume</string>
     <string name="break_next_auto">The next focus session starts automatically.</string>
 
     <string name="duration_hours_minutes">%1$d h %2$d min</string>

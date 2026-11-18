@@ -23,6 +23,14 @@ const val MIN_BREAK_SECONDS = 5
 const val MAX_BREAK_SECONDS = 1800
 const val MAX_PRESET_NAME_LENGTH = 24
 
+const val MIN_TIMED_PAUSE_MINUTES = 1
+const val MAX_TIMED_PAUSE_MINUTES = 24 * 60
+const val DEFAULT_TIMED_PAUSE_MINUTES = 30
+
+/** Parses the settings input for the timed pause length; null means the value is not usable. */
+fun parseTimedPauseMinutes(raw: String): Int? =
+    raw.trim().toIntOrNull()?.takeIf { it in MIN_TIMED_PAUSE_MINUTES..MAX_TIMED_PAUSE_MINUTES }
+
 enum class PresetValidationError {
     NAME_BLANK,
     NAME_TOO_LONG,
@@ -47,12 +55,17 @@ data class AppSettings(
     val showNotificationActions: Boolean = false,
     val hideFromRecents: Boolean = false,
     val pauseVideoDuringBreak: Boolean = false,
+    val pauseAppPackages: Set<String> = DEFAULT_PAUSE_APP_PACKAGES,
+    val mediaPauseDebugLog: Boolean = false,
     val autoStartOnBoot: Boolean = true,
     val themeId: String = "jade",
     val customSeedArgb: Long? = null,
     val darkMode: String = "system",
     val pausedRemainingMs: Long = 0L,
     val pausedMode: String = "FOCUS",
+    /** Wall-clock time when a timed pause resumes; 0 means the pause lasts until resumed by hand. */
+    val pausedUntilEpochMs: Long = 0L,
+    val timedPauseMinutes: Int = DEFAULT_TIMED_PAUSE_MINUTES,
     val onboardingCompleted: Boolean = false,
     val dismissedPermissionKeys: Set<String> = emptySet(),
 ) {
@@ -60,12 +73,25 @@ data class AppSettings(
         val safePresets = presets.filter { it.validationError() == null }
             .ifEmpty { DEFAULT_PRESETS }
         val selected = safePresets.firstOrNull { it.id == selectedPresetId } ?: safePresets.first()
-        return copy(presets = safePresets, selectedPresetId = selected.id)
+        return copy(
+            presets = safePresets,
+            selectedPresetId = selected.id,
+            pausedUntilEpochMs = pausedUntilEpochMs.coerceAtLeast(0L),
+            timedPauseMinutes = timedPauseMinutes
+                .coerceIn(MIN_TIMED_PAUSE_MINUTES, MAX_TIMED_PAUSE_MINUTES),
+        )
     }
 
     fun currentPreset(): Preset =
         presets.firstOrNull { it.id == selectedPresetId } ?: presets.firstOrNull() ?: DEFAULT_PRESETS.first()
 }
+
+/**
+ * The service is also needed after a reboot when a timed pause is still pending, so it can
+ * resume on time; an indefinite pause stays silent until the user starts the app.
+ */
+fun shouldRestoreAfterBoot(settings: AppSettings): Boolean =
+    settings.autoStartOnBoot && (settings.running || settings.pausedUntilEpochMs > 0L)
 
 @Serializable
 data class DailyStats(
