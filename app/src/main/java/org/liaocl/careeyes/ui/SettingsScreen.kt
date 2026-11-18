@@ -155,6 +155,14 @@ fun SettingsScreen(
                         },
                     )
                     SwitchRow(
+                        title = stringResource(R.string.settings_break_vibration),
+                        description = stringResource(R.string.settings_break_vibration_desc),
+                        checked = settings.vibrateWhenBreakEnds,
+                        onCheckedChange = { checked ->
+                            onUpdateSettings { it.copy(vibrateWhenBreakEnds = checked) }
+                        },
+                    )
+                    SwitchRow(
                         title = stringResource(R.string.settings_autostart),
                         description = stringResource(R.string.settings_autostart_desc),
                         checked = settings.autoStartOnBoot,

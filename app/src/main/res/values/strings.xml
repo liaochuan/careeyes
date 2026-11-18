@@ -120,6 +120,8 @@
     <string name="settings_timed_pause_dialog_title">Timed pause length</string>
     <string name="settings_timed_pause_dialog_hint">Minutes (1–1440)</string>
     <string name="settings_timed_pause_invalid">Enter a number between 1 and 1440.</string>
+    <string name="settings_break_vibration">Vibrate when a break ends</string>
+    <string name="settings_break_vibration_desc">One short vibration when the break countdown finishes.</string>
     <string name="settings_section_permissions">Permissions</string>
     <string name="settings_granted">Granted</string>
     <string name="settings_not_granted">Not granted</string>

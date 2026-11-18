@@ -119,6 +119,8 @@
     <string name="settings_timed_pause_dialog_title">时间暂停时长</string>
     <string name="settings_timed_pause_dialog_hint">分钟（1–1440）</string>
     <string name="settings_timed_pause_invalid">请输入 1–1440 之间的数字。</string>
+    <string name="settings_break_vibration">休息结束震动</string>
+    <string name="settings_break_vibration_desc">休息倒计时自然结束时震动一下。</string>
     <string name="settings_section_permissions">权限</string>
     <string name="settings_granted">已授权</string>
     <string name="settings_not_granted">未授权</string>

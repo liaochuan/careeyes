@@ -66,6 +66,8 @@ data class AppSettings(
     /** Wall-clock time when a timed pause resumes; 0 means the pause lasts until resumed by hand. */
     val pausedUntilEpochMs: Long = 0L,
     val timedPauseMinutes: Int = DEFAULT_TIMED_PAUSE_MINUTES,
+    /** One short vibration when the break countdown finishes. */
+    val vibrateWhenBreakEnds: Boolean = true,
     /** Packages whose media CareEyes paused for the current break, so it can resume them. */
     val pausedMediaPackages: Set<String> = emptySet(),
     val onboardingCompleted: Boolean = false,

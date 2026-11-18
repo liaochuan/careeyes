@@ -36,6 +36,7 @@ import org.liaocl.careeyes.engine.ScreenReturn
 import org.liaocl.careeyes.engine.TimerMode
 import org.liaocl.careeyes.engine.screenReturn
 import org.liaocl.careeyes.engine.timedPauseExpired
+import org.liaocl.careeyes.util.BreakVibration
 import org.liaocl.careeyes.util.PermissionUtils
 import kotlin.math.roundToInt
 
@@ -475,6 +476,7 @@ class EyeCareService : Service() {
         dismissBreakActivity()
         resumePausedMedia()
         afterStateChange()
+        BreakVibration.vibrateOnce(this, settings.vibrateWhenBreakEnds)
     }
 
     private fun onScreenOff() {
