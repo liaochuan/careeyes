@@ -7,6 +7,8 @@ import org.junit.Test
 import org.liaocl.careeyes.data.DEFAULT_PAUSE_APP_PACKAGES
 import org.liaocl.careeyes.service.shouldPauseSession
 import org.liaocl.careeyes.service.shouldPauseState
+import org.liaocl.careeyes.service.shouldRecordPausedState
+import org.liaocl.careeyes.service.shouldResumeState
 
 class MediaPausePolicyTest {
     @Test
@@ -56,5 +58,31 @@ class MediaPausePolicyTest {
     fun skipsSessionsThatAreAlreadyPausedOrBroken() {
         assertFalse(shouldPauseState(PlaybackState.STATE_PAUSED))
         assertFalse(shouldPauseState(PlaybackState.STATE_ERROR))
+    }
+
+    @Test
+    fun resumesOnlySessionsThatAreStillPaused() {
+        assertTrue(shouldResumeState(PlaybackState.STATE_PAUSED))
+    }
+
+    @Test
+    fun leavesPlayingBufferingAndEndedSessionsAlone() {
+        assertFalse(shouldResumeState(PlaybackState.STATE_PLAYING))
+        assertFalse(shouldResumeState(PlaybackState.STATE_BUFFERING))
+        assertFalse(shouldResumeState(PlaybackState.STATE_STOPPED))
+        assertFalse(shouldResumeState(PlaybackState.STATE_NONE))
+        assertFalse(shouldResumeState(PlaybackState.STATE_ERROR))
+        assertFalse(shouldResumeState(null))
+    }
+
+    @Test
+    fun recordsOnlySessionsThatWerePlaying() {
+        assertTrue(shouldRecordPausedState(PlaybackState.STATE_PLAYING))
+        assertTrue(shouldRecordPausedState(PlaybackState.STATE_BUFFERING))
+        assertFalse(shouldRecordPausedState(PlaybackState.STATE_PAUSED))
+        assertFalse(shouldRecordPausedState(PlaybackState.STATE_STOPPED))
+        assertFalse(shouldRecordPausedState(PlaybackState.STATE_NONE))
+        assertFalse(shouldRecordPausedState(PlaybackState.STATE_ERROR))
+        assertFalse(shouldRecordPausedState(null))
     }
 }

@@ -94,7 +94,7 @@
     <string name="settings_notification_actions">通知操作按钮</string>
     <string name="settings_notification_actions_desc">在状态通知上显示暂停、立即休息等按钮。通知本身用于保持计时在后台运行，无法隐藏。</string>
     <string name="settings_pause_video">休息时暂停视频</string>
-    <string name="settings_pause_video_desc">休息开始时暂停下面列表中允许的应用（仅当它在前台播放）。需要通知使用权和使用情况访问。</string>
+    <string name="settings_pause_video_desc">休息开始时暂停下面列表中允许的应用（仅当它在前台播放），休息结束后自动恢复播放。需要通知使用权和使用情况访问。</string>
     <string name="settings_pause_apps_title">暂停的应用</string>
     <string name="settings_pause_apps_desc">只有列表中的应用在前台播放时才会暂停；其余应用（含音乐）继续播放。</string>
     <string name="settings_pause_apps_count">已启用 %1$d 个应用</string>

@@ -20,9 +20,10 @@ object MediaPauseController {
      * without either, nothing is paused. [debugLog] turns on diagnostics for the pause
      * decisions; when it is off this method writes no log output.
      *
-     * Returns the number of sessions that accepted pause.
+     * Returns the packages whose sessions accepted pause while actually playing, so they can be
+     * resumed when the break ends.
      */
-    fun pausePlaying(context: Context, pausePackages: Set<String>, debugLog: Boolean): Int {
+    fun pausePlaying(context: Context, pausePackages: Set<String>, debugLog: Boolean): Set<String> {
         val log: (String) -> Unit = { message ->
             if (debugLog) {
                 Log.i(TAG, "mediaPause: $message")
@@ -31,21 +32,21 @@ object MediaPauseController {
         }
         if (pausePackages.isEmpty()) {
             log("no apps enabled")
-            return 0
+            return emptySet()
         }
         if (!NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)) {
             log("notification access missing")
-            return 0
+            return emptySet()
         }
         val foregroundPackage = ForegroundApp.packageName(context)
         if (foregroundPackage == null) {
             log("foreground unknown")
-            return 0
+            return emptySet()
         }
         val manager = context.getSystemService(MediaSessionManager::class.java)
         if (manager == null) {
             log("no session manager")
-            return 0
+            return emptySet()
         }
         val listener = ComponentName(context, MediaPauseService::class.java)
         val sessions = try {
@@ -55,21 +56,77 @@ object MediaPauseController {
                 Log.w(TAG, "mediaPause: unable to list media sessions", error)
                 MediaPauseJournal.append(context, "unable to list media sessions: ${error.javaClass.simpleName}")
             }
-            return 0
+            return emptySet()
         }
-        var paused = 0
+        val resumable = mutableSetOf<String>()
+        var pausedCount = 0
         sessions.forEach { controller: MediaController ->
             val state = runCatching { controller.playbackState?.state }.getOrNull()
             val allowed = shouldPauseSession(controller.packageName, foregroundPackage, pausePackages)
             if (allowed && shouldPauseState(state)) {
                 val accepted = runCatching { controller.transportControls.pause() }.isSuccess
                 log("pause ${controller.packageName} state=$state ok=$accepted")
-                if (accepted) paused += 1
+                if (accepted) {
+                    pausedCount += 1
+                    if (shouldRecordPausedState(state)) resumable += controller.packageName
+                }
             } else {
                 log("skip ${controller.packageName} state=$state allowed=$allowed")
             }
         }
-        log("foreground=$foregroundPackage sessions=${sessions.size} paused=$paused")
-        return paused
+        log(
+            "foreground=$foregroundPackage sessions=${sessions.size} " +
+                "paused=$pausedCount resumable=${resumable.size}",
+        )
+        return resumable
+    }
+
+    /**
+     * Plays the sessions of [packages] that CareEyes paused when the break started. Sessions that
+     * already play again are skipped, so apps that resume on their own are not disturbed.
+     *
+     * Returns the packages whose sessions accepted the play request.
+     */
+    fun resumePlaying(context: Context, packages: Set<String>, debugLog: Boolean): Set<String> {
+        val log: (String) -> Unit = { message ->
+            if (debugLog) {
+                Log.i(TAG, "mediaResume: $message")
+                MediaPauseJournal.append(context, message)
+            }
+        }
+        if (packages.isEmpty()) return emptySet()
+        if (!NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)) {
+            log("notification access missing")
+            return emptySet()
+        }
+        val manager = context.getSystemService(MediaSessionManager::class.java)
+        if (manager == null) {
+            log("no session manager")
+            return emptySet()
+        }
+        val listener = ComponentName(context, MediaPauseService::class.java)
+        val sessions = try {
+            manager.getActiveSessions(listener)
+        } catch (error: Exception) {
+            if (debugLog) {
+                Log.w(TAG, "mediaResume: unable to list media sessions", error)
+                MediaPauseJournal.append(context, "unable to list media sessions: ${error.javaClass.simpleName}")
+            }
+            return emptySet()
+        }
+        val resumed = mutableSetOf<String>()
+        sessions.forEach { controller: MediaController ->
+            if (controller.packageName !in packages) return@forEach
+            val state = runCatching { controller.playbackState?.state }.getOrNull()
+            if (!shouldResumeState(state)) {
+                log("keep ${controller.packageName} state=$state")
+                return@forEach
+            }
+            val accepted = runCatching { controller.transportControls.play() }.isSuccess
+            log("resume ${controller.packageName} state=$state ok=$accepted")
+            if (accepted) resumed += controller.packageName
+        }
+        log("packages=${packages.size} sessions=${sessions.size} resumed=${resumed.size}")
+        return resumed
     }
 }

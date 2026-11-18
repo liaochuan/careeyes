@@ -24,6 +24,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.liaocl.careeyes.appContainer
 import org.liaocl.careeyes.data.AppSettings
 import org.liaocl.careeyes.data.SettingsRepository
@@ -57,6 +58,7 @@ class EyeCareService : Service() {
         private const val PROGRESS_UPDATE_INTERVAL_MS = 30_000L
         private const val BREAK_FALLBACK_DELAY_MS = 1_500L
         private const val MINUTE_MS = 60_000L
+        private val MEDIA_RESUME_DELAYS_MS = longArrayOf(0L, 400L, 1_200L, 2_500L)
         private const val TAG = "CareEyes"
 
         fun start(
@@ -91,6 +93,7 @@ class EyeCareService : Service() {
     private var progressJob: Job? = null
     private var pauseStopJob: Job? = null
     private var pauseEndJob: Job? = null
+    private var mediaPauseJob: Job? = null
     private var breakFallbackJob: Job? = null
 
     private var focusSegmentStart: Long? = null
@@ -204,6 +207,10 @@ class EyeCareService : Service() {
                 schedulePauseEnd(settings.pausedUntilEpochMs)
                 schedulePauseStop()
             }
+            // A focus or idle state cannot own a paused media session; drop leftovers from a kill.
+            if (engine.state.value.mode == TimerMode.FOCUS || engine.state.value.mode == TimerMode.IDLE) {
+                clearPausedMedia()
+            }
         }
     }
 
@@ -266,6 +273,7 @@ class EyeCareService : Service() {
         pendingBreak = false
         persistRunning()
         dismissBreakActivity()
+        resumePausedMedia()
         afterStateChange()
     }
 
@@ -289,6 +297,7 @@ class EyeCareService : Service() {
         updateProgressJob()
         schedulePauseEnd(pausedUntil)
         schedulePauseStop()
+        if (skipBreak) resumePausedMedia()
     }
 
     private fun resumeTimer() {
@@ -311,6 +320,7 @@ class EyeCareService : Service() {
         val resumed = engine.state.value
         focusSegmentStart = if (resumed.mode == TimerMode.FOCUS) now() else null
         persistRunning()
+        if (resumed.mode == TimerMode.FOCUS) resumePausedMedia()
         afterStateChange()
         if (resumed.mode == TimerMode.BREAK) launchBreakActivity()
     }
@@ -332,14 +342,15 @@ class EyeCareService : Service() {
         persistRunning()
         afterStateChange()
         if (settings.pauseVideoDuringBreak) {
-            scope.launch(Dispatchers.IO) {
-                runCatching {
-                    MediaPauseController.pausePlaying(
-                        applicationContext,
-                        settings.pauseAppPackages,
-                        settings.mediaPauseDebugLog,
-                    )
+            val pausePackages = settings.pauseAppPackages
+            val debugLog = settings.mediaPauseDebugLog
+            mediaPauseJob = scope.launch {
+                val paused = withContext(Dispatchers.IO) {
+                    runCatching {
+                        MediaPauseController.pausePlaying(applicationContext, pausePackages, debugLog)
+                    }.getOrDefault(emptySet())
                 }
+                if (paused.isNotEmpty()) persistPausedMedia(paused)
             }
         }
         launchBreakActivity()
@@ -358,6 +369,7 @@ class EyeCareService : Service() {
         focusSegmentStart = now()
         persistRunning()
         dismissBreakActivity()
+        resumePausedMedia()
         afterStateChange()
     }
 
@@ -375,6 +387,7 @@ class EyeCareService : Service() {
         focusSegmentStart = now()
         persistRunning()
         dismissBreakActivity()
+        resumePausedMedia()
         afterStateChange()
     }
 
@@ -394,6 +407,7 @@ class EyeCareService : Service() {
                 focusSegmentStart = null
             }
             dismissBreakActivity()
+            resumePausedMedia()
         }
         updateNotification()
         scheduleDeadline()
@@ -459,6 +473,7 @@ class EyeCareService : Service() {
         focusSegmentStart = now()
         persistRunning()
         dismissBreakActivity()
+        resumePausedMedia()
         afterStateChange()
     }
 
@@ -508,6 +523,7 @@ class EyeCareService : Service() {
                 focusSegmentStart = now()
                 persistRunning()
                 dismissBreakActivity()
+                clearPausedMediaAfterPauseSettles()
                 afterStateChange()
             }
 
@@ -660,6 +676,72 @@ class EyeCareService : Service() {
         val seconds = ((now() - start).coerceAtLeast(0L)) / 1000L
         if (seconds <= 0L) return
         scope.launch { statsRepository.addFocusSeconds(seconds) }
+    }
+
+    private fun persistPausedMedia(packages: Set<String>) {
+        if (packages.isEmpty()) return
+        settings = settings.copy(pausedMediaPackages = settings.pausedMediaPackages + packages)
+        scope.launch {
+            settingsRepository.update {
+                it.copy(pausedMediaPackages = it.pausedMediaPackages + packages)
+            }
+        }
+    }
+
+    /**
+     * Resumes what CareEyes paused when the break started. The video app only regains focus
+     * after the break screen finishes, and some apps ignore a play request while backgrounded,
+     * so the request waits until that app is back in the foreground, with a bounded retry window.
+     */
+    private fun resumePausedMedia() {
+        val pauseJob = mediaPauseJob
+        if (pauseJob == null && settings.pausedMediaPackages.isEmpty()) return
+        val debugLog = settings.mediaPauseDebugLog
+        scope.launch {
+            // A break that ends immediately may still have its pause request in flight; wait for
+            // it so the packages it paused are the ones resumed.
+            pauseJob?.join()
+            // A new break may have started while waiting; leave its fresh pause alone.
+            if (engine.state.value.mode == TimerMode.BREAK) return@launch
+            val packages = settings.pausedMediaPackages
+            if (packages.isEmpty()) return@launch
+            clearPausedMedia()
+            for (waitMs in MEDIA_RESUME_DELAYS_MS) {
+                if (waitMs > 0L) delay(waitMs)
+                if (engine.state.value.mode == TimerMode.BREAK) return@launch
+                val foreground = withContext(Dispatchers.IO) {
+                    runCatching { ForegroundApp.packageName(applicationContext) }.getOrNull()
+                }
+                if (foreground == null || foreground !in packages) continue
+                withContext(Dispatchers.IO) {
+                    runCatching {
+                        MediaPauseController.resumePlaying(applicationContext, packages, debugLog)
+                    }
+                }
+                return@launch
+            }
+        }
+    }
+
+    /** Drops paused packages once the pause request already in flight has settled. */
+    private fun clearPausedMediaAfterPauseSettles() {
+        val pauseJob = mediaPauseJob
+        if (pauseJob == null) {
+            clearPausedMedia()
+            return
+        }
+        scope.launch {
+            pauseJob.join()
+            clearPausedMedia()
+        }
+    }
+
+    private fun clearPausedMedia() {
+        if (settings.pausedMediaPackages.isEmpty()) return
+        settings = settings.copy(pausedMediaPackages = emptySet())
+        scope.launch {
+            settingsRepository.update { it.copy(pausedMediaPackages = emptySet()) }
+        }
     }
 
     private fun cancelDeadline() {

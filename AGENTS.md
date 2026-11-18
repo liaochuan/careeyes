@@ -110,6 +110,6 @@ signing.storeType=PKCS12
 ## 已知限制
 
 - Android 14+ 可能不授予 `USE_FULL_SCREEN_INTENT`；主路径依赖悬浮窗权限，未授权时降级 heads-up 通知。
-- 视频暂停依赖第三方应用发布 MediaSession，不自动恢复播放。
+- 视频暂停/恢复依赖第三方应用发布并响应 MediaSession 控制；不发布会话或忽略后台 play() 的应用无法完整暂停/恢复。
 - 部分 OEM 会限制前台服务或开机自启，需要用户手动允许。
 - 跨午夜专注段整段计入落盘当天；进程被杀重启后从完整专注时长开始。

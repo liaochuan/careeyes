@@ -95,7 +95,7 @@
     <string name="settings_notification_actions">Notification buttons</string>
     <string name="settings_notification_actions_desc">Show pause, rest now and similar buttons on the status notification. The notification itself keeps timing alive and cannot be hidden.</string>
     <string name="settings_pause_video">Pause video during breaks</string>
-    <string name="settings_pause_video_desc">Pause the apps you allow below when they play in the foreground during a break. Requires notification access and usage access.</string>
+    <string name="settings_pause_video_desc">Pause the apps you allow below when they play in the foreground during a break, and resume them when the break ends. Requires notification access and usage access.</string>
     <string name="settings_pause_apps_title">Apps to pause</string>
     <string name="settings_pause_apps_desc">Only the apps in this list are paused when a break starts; everything else, including music, keeps playing.</string>
     <string name="settings_pause_apps_count">%1$d apps enabled</string>

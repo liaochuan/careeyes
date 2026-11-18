@@ -25,3 +25,22 @@ fun shouldPauseSession(
  */
 fun shouldPauseState(state: Int?): Boolean =
     state != PlaybackState.STATE_PAUSED && state != PlaybackState.STATE_ERROR
+
+/**
+ * Decides whether a session that accepted pause is remembered for resume.
+ *
+ * Only sessions that were actually playing are remembered, so a video that had already ended
+ * is not restarted when the break finishes. Apps whose session never reports PLAYING/BUFFERING
+ * may be paused but cannot be resumed automatically.
+ */
+fun shouldRecordPausedState(state: Int?): Boolean =
+    state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_BUFFERING
+
+/**
+ * Decides whether a remembered session may be resumed when the break ends.
+ *
+ * Only a session that is still paused is resumed. Sessions that already play again (Douyin
+ * restarts by itself) or have ended meanwhile are left alone.
+ */
+fun shouldResumeState(state: Int?): Boolean =
+    state == PlaybackState.STATE_PAUSED
