@@ -4,6 +4,20 @@ import android.content.Intent
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,6 +27,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -34,6 +50,35 @@ import org.liaocl.careeyes.util.pruneDismissed
 import org.liaocl.careeyes.util.shouldShowPermissionCard
 
 private enum class AppPage { ONBOARDING, HOME, PRESETS, STATS, SETTINGS, PAUSE_APPS }
+
+/** Depth drives slide direction: deeper pages enter from the trailing edge, shallower ones return. */
+private val AppPage.depth: Int
+    get() = when (this) {
+        AppPage.HOME -> 0
+        AppPage.PRESETS, AppPage.STATS, AppPage.SETTINGS, AppPage.ONBOARDING -> 1
+        AppPage.PAUSE_APPS -> 2
+    }
+
+private const val PAGE_ENTER_MILLIS = 240
+private const val PAGE_EXIT_MILLIS = 180
+
+/**
+ * Short push transition. Only the two adjacent screens exist while it runs (~240ms);
+ * nothing is retained afterwards, so steady-state memory is unchanged.
+ */
+private fun pageTransition(forward: Boolean): ContentTransform {
+    val enterOffset: (Int) -> Int = { width -> if (forward) width / 6 else -width / 6 }
+    val exitOffset: (Int) -> Int = { width -> if (forward) -width / 8 else width / 8 }
+    val enter = slideInHorizontally(
+        animationSpec = tween(PAGE_ENTER_MILLIS, easing = FastOutSlowInEasing),
+        initialOffsetX = enterOffset,
+    ) + fadeIn(tween(PAGE_ENTER_MILLIS))
+    val exit = slideOutHorizontally(
+        animationSpec = tween(PAGE_EXIT_MILLIS, easing = LinearOutSlowInEasing),
+        targetOffsetX = exitOffset,
+    ) + fadeOut(tween(PAGE_EXIT_MILLIS))
+    return enter togetherWith exit
+}
 
 @Composable
 fun AppRoot(
@@ -195,62 +240,77 @@ fun AppRoot(
 
     if (!initialized) return
 
-    when (page) {
-        AppPage.ONBOARDING -> OnboardingScreen(
-            snapshot = permissionSnapshot,
-            onFinish = finishOnboarding,
-            onRequestNotifications = onRequestNotifications,
-        )
+    // Backplate keeps the brief cross-fade opaque instead of showing the window behind both screens.
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        AnimatedContent(
+            targetState = page,
+            modifier = Modifier.fillMaxSize(),
+            transitionSpec = { pageTransition(targetState.depth > initialState.depth) },
+            contentAlignment = Alignment.TopStart,
+            label = "app-page",
+        ) { current ->
+            when (current) {
+                AppPage.ONBOARDING -> OnboardingScreen(
+                    snapshot = permissionSnapshot,
+                    onFinish = finishOnboarding,
+                    onRequestNotifications = onRequestNotifications,
+                )
 
-        AppPage.HOME -> HomeScreen(
-            runtime = runtime,
-            settings = settings,
-            stats = stats,
-            now = now,
-            showPermissionCard = showPermissionCard,
-            missingPermissions = missingPermissions,
-            onStart = { EyeCareService.start(context, EyeCareService.ACTION_START) },
-            onPause = { EyeCareService.start(context, EyeCareService.ACTION_PAUSE) },
-            onResume = { EyeCareService.start(context, EyeCareService.ACTION_RESUME) },
-            onReset = { EyeCareService.start(context, EyeCareService.ACTION_RESET) },
-            onRestNow = { EyeCareService.start(context, EyeCareService.ACTION_START_BREAK) },
-            onSkipBreak = { EyeCareService.start(context, EyeCareService.ACTION_SKIP_BREAK) },
-            onSelectPreset = selectPreset,
-            onManagePresets = { pageName = AppPage.PRESETS.name },
-            onOpenStats = { pageName = AppPage.STATS.name },
-            onOpenSettings = { pageName = AppPage.SETTINGS.name },
-            onOpenPermissionGuide = openPermissionGuide,
-            onDismissPermissions = dismissPermissions,
-        )
+                AppPage.HOME -> HomeScreen(
+                    runtime = runtime,
+                    settings = settings,
+                    stats = stats,
+                    now = now,
+                    showPermissionCard = showPermissionCard,
+                    missingPermissions = missingPermissions,
+                    onStart = { EyeCareService.start(context, EyeCareService.ACTION_START) },
+                    onPause = { EyeCareService.start(context, EyeCareService.ACTION_PAUSE) },
+                    onResume = { EyeCareService.start(context, EyeCareService.ACTION_RESUME) },
+                    onReset = { EyeCareService.start(context, EyeCareService.ACTION_RESET) },
+                    onRestNow = { EyeCareService.start(context, EyeCareService.ACTION_START_BREAK) },
+                    onSkipBreak = { EyeCareService.start(context, EyeCareService.ACTION_SKIP_BREAK) },
+                    onSelectPreset = selectPreset,
+                    onManagePresets = { pageName = AppPage.PRESETS.name },
+                    onOpenStats = { pageName = AppPage.STATS.name },
+                    onOpenSettings = { pageName = AppPage.SETTINGS.name },
+                    onOpenPermissionGuide = openPermissionGuide,
+                    onDismissPermissions = dismissPermissions,
+                )
 
-        AppPage.PRESETS -> PresetsScreen(
-            settings = settings,
-            onBack = { pageName = AppPage.HOME.name },
-            onSelectPreset = selectPreset,
-            onSavePreset = savePreset,
-            onDeletePreset = deletePreset,
-        )
+                AppPage.PRESETS -> PresetsScreen(
+                    settings = settings,
+                    onBack = { pageName = AppPage.HOME.name },
+                    onSelectPreset = selectPreset,
+                    onSavePreset = savePreset,
+                    onDeletePreset = deletePreset,
+                )
 
-        AppPage.STATS -> StatsScreen(
-            stats = stats,
-            onBack = { pageName = AppPage.HOME.name },
-        )
+                AppPage.STATS -> StatsScreen(
+                    stats = stats,
+                    onBack = { pageName = AppPage.HOME.name },
+                )
 
-        AppPage.SETTINGS -> SettingsScreen(
-            settings = settings,
-            permissionSnapshot = permissionSnapshot,
-            onBack = { pageName = AppPage.HOME.name },
-            onUpdateSettings = updateSettings,
-            onRequestNotifications = onRequestNotifications,
-            onOpenPermissionGuide = openPermissionGuide,
-            onOpenPauseApps = { pageName = AppPage.PAUSE_APPS.name },
-            onExportMediaLog = exportMediaLog,
-        )
+                AppPage.SETTINGS -> SettingsScreen(
+                    settings = settings,
+                    permissionSnapshot = permissionSnapshot,
+                    onBack = { pageName = AppPage.HOME.name },
+                    onUpdateSettings = updateSettings,
+                    onRequestNotifications = onRequestNotifications,
+                    onOpenPermissionGuide = openPermissionGuide,
+                    onOpenPauseApps = { pageName = AppPage.PAUSE_APPS.name },
+                    onExportMediaLog = exportMediaLog,
+                )
 
-        AppPage.PAUSE_APPS -> PauseAppsScreen(
-            settings = settings,
-            onBack = { pageName = AppPage.SETTINGS.name },
-            onUpdateSettings = updateSettings,
-        )
+                AppPage.PAUSE_APPS -> PauseAppsScreen(
+                    settings = settings,
+                    onBack = { pageName = AppPage.SETTINGS.name },
+                    onUpdateSettings = updateSettings,
+                )
+            }
+        }
     }
 }
