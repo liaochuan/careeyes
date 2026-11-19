@@ -9,6 +9,7 @@ import org.liaocl.careeyes.service.shouldPauseSession
 import org.liaocl.careeyes.service.shouldPauseState
 import org.liaocl.careeyes.service.shouldRecordPausedState
 import org.liaocl.careeyes.service.shouldResumeState
+import org.liaocl.careeyes.service.shouldRetryPause
 
 class MediaPausePolicyTest {
     @Test
@@ -58,6 +59,16 @@ class MediaPausePolicyTest {
     fun skipsSessionsThatAreAlreadyPausedOrBroken() {
         assertFalse(shouldPauseState(PlaybackState.STATE_PAUSED))
         assertFalse(shouldPauseState(PlaybackState.STATE_ERROR))
+    }
+
+    @Test
+    fun retriesOnlyWhileTheSessionStillReportsPlayback() {
+        assertTrue(shouldRetryPause(PlaybackState.STATE_PLAYING))
+        assertTrue(shouldRetryPause(PlaybackState.STATE_BUFFERING))
+        assertFalse(shouldRetryPause(PlaybackState.STATE_PAUSED))
+        assertFalse(shouldRetryPause(PlaybackState.STATE_STOPPED))
+        assertFalse(shouldRetryPause(PlaybackState.STATE_NONE))
+        assertFalse(shouldRetryPause(null))
     }
 
     @Test

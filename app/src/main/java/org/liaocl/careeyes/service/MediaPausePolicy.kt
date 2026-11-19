@@ -27,6 +27,15 @@ fun shouldPauseState(state: Int?): Boolean =
     state != PlaybackState.STATE_PAUSED && state != PlaybackState.STATE_ERROR
 
 /**
+ * Decides whether a pause request should be repeated.
+ *
+ * Only sessions that report active playback can be verified this way: apps that keep their
+ * session in STOPPED/NONE while a video plays give no feedback, so one request is all we send.
+ */
+fun shouldRetryPause(state: Int?): Boolean =
+    state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_BUFFERING
+
+/**
  * Decides whether a session that accepted pause is remembered for resume.
  *
  * Only sessions that were actually playing are remembered, so a video that had already ended
