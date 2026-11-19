@@ -33,6 +33,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,7 +61,7 @@ import org.liaocl.careeyes.ui.theme.ColorPickerDialog
 import org.liaocl.careeyes.ui.theme.paletteSeed
 import org.liaocl.careeyes.util.PermissionSnapshot
 import org.liaocl.careeyes.util.PermissionUtils
-import org.liaocl.careeyes.util.installedLaunchableApps
+import org.liaocl.careeyes.util.loadInstalledLaunchableApps
 
 @Composable
 fun SettingsScreen(
@@ -88,10 +89,13 @@ fun SettingsScreen(
         settings.customSeedArgb?.let { Color(it.toInt()) } ?: paletteSeed(settings.themeId, null)
     }
     // Count only apps the user can actually see and toggle on the "apps to pause" page.
-    val enabledPauseAppCount = remember(settings.pauseAppPackages) {
-        val installed = installedLaunchableApps(context).mapTo(HashSet()) { it.packageName }
-        settings.pauseAppPackages.count { it in installed }
+    // The PackageManager query runs off the main thread, so tapping the settings icon never waits
+    // for it; until it lands the selected packages are used as the count.
+    val installedPauseAppCount by produceState<Int?>(initialValue = null, settings.pauseAppPackages) {
+        val installed = loadInstalledLaunchableApps(context).mapTo(HashSet()) { it.packageName }
+        value = settings.pauseAppPackages.count { it in installed }
     }
+    val enabledPauseAppCount = installedPauseAppCount ?: settings.pauseAppPackages.size
 
     ScreenScaffold(title = stringResource(R.string.settings_title), onBack = onBack) { padding ->
         LazyColumn(

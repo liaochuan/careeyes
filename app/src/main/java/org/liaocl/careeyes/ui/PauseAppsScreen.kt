@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -26,7 +27,8 @@ import org.liaocl.careeyes.data.DEFAULT_PAUSE_APP_PACKAGES
 import org.liaocl.careeyes.ui.components.AppCard
 import org.liaocl.careeyes.ui.components.ScreenScaffold
 import org.liaocl.careeyes.ui.components.SwitchRow
-import org.liaocl.careeyes.util.installedLaunchableApps
+import org.liaocl.careeyes.util.InstalledApp
+import org.liaocl.careeyes.util.loadInstalledLaunchableApps
 
 @Composable
 fun PauseAppsScreen(
@@ -35,20 +37,25 @@ fun PauseAppsScreen(
     onUpdateSettings: ((AppSettings) -> AppSettings) -> Unit,
 ) {
     val context = LocalContext.current
-    val apps = remember { installedLaunchableApps(context) }
+    // Null while the launcher-app query runs on the IO dispatcher; the list simply appears later.
+    val apps by produceState<List<InstalledApp>?>(initialValue = null) {
+        value = loadInstalledLaunchableApps(context)
+    }
     var query by rememberSaveable { mutableStateOf("") }
     val selected = settings.pauseAppPackages
     val visibleApps = remember(apps, query, selected) {
-        val needle = query.trim().lowercase()
-        val filtered = if (needle.isEmpty()) {
-            apps
-        } else {
-            apps.filter {
-                it.label.lowercase().contains(needle) || it.packageName.lowercase().contains(needle)
+        apps?.let { loaded ->
+            val needle = query.trim().lowercase()
+            val filtered = if (needle.isEmpty()) {
+                loaded
+            } else {
+                loaded.filter {
+                    it.label.lowercase().contains(needle) || it.packageName.lowercase().contains(needle)
+                }
             }
+            // Enabled apps float to the top; sortedByDescending is stable, so label order is kept.
+            filtered.sortedByDescending { it.packageName in selected }
         }
-        // Enabled apps float to the top; sortedByDescending is stable, so label order is kept.
-        filtered.sortedByDescending { it.packageName in selected }
     }
 
     ScreenScaffold(title = stringResource(R.string.settings_pause_apps_title), onBack = onBack) { padding ->
@@ -78,33 +85,36 @@ fun PauseAppsScreen(
                     singleLine = true,
                 )
             }
-            if (visibleApps.isEmpty()) {
-                item {
-                    Text(
-                        text = stringResource(R.string.pause_apps_empty),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            val listedApps = visibleApps
+            if (listedApps != null) {
+                if (listedApps.isEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.pause_apps_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-            }
-            items(visibleApps, key = { it.packageName }) { app ->
-                AppCard {
-                    SwitchRow(
-                        title = app.label,
-                        description = app.packageName,
-                        checked = app.packageName in selected,
-                        onCheckedChange = { checked ->
-                            onUpdateSettings { current ->
-                                current.copy(
-                                    pauseAppPackages = if (checked) {
-                                        current.pauseAppPackages + app.packageName
-                                    } else {
-                                        current.pauseAppPackages - app.packageName
-                                    },
-                                )
-                            }
-                        },
-                    )
+                items(listedApps, key = { it.packageName }) { app ->
+                    AppCard {
+                        SwitchRow(
+                            title = app.label,
+                            description = app.packageName,
+                            checked = app.packageName in selected,
+                            onCheckedChange = { checked ->
+                                onUpdateSettings { current ->
+                                    current.copy(
+                                        pauseAppPackages = if (checked) {
+                                            current.pauseAppPackages + app.packageName
+                                        } else {
+                                            current.pauseAppPackages - app.packageName
+                                        },
+                                    )
+                                }
+                            },
+                        )
+                    }
                 }
             }
             item {
